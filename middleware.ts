@@ -44,12 +44,26 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Initial load: redirect root to login (or dashboard if authenticated)
+  if (req.nextUrl.pathname === '/') {
+    const url = req.nextUrl.clone();
+    url.pathname = user ? '/dashboard' : '/login';
+    return NextResponse.redirect(url);
+  }
+
   // Protected routes
   const protectedRoutes = ['/dashboard', '/manage', '/transactions', '/reports', '/profile'];
   const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route));
 
   if (isProtectedRoute && !user) {
     // Redirect to login if accessing protected route without authentication
+    const url = req.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  // Prevent unauthenticated access to setup
+  if (req.nextUrl.pathname.startsWith('/setup') && !user) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
