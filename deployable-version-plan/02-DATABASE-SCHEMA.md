@@ -1,0 +1,754 @@
+# Database Schema Design - Prisma
+
+## Overview
+
+This document defines the complete Prisma schema for SNM Analytics, designed for PostgreSQL on Supabase.
+
+## Schema Design Principles
+
+1. **Normalization**: 3NF compliance for data integrity
+2. **Indexing**: Strategic indexes for performance
+3. **Constraints**: Foreign keys and check constraints
+4. **Audit Trail**: Created/updated timestamps on all tables
+5. **Soft Deletes**: isActive flags instead of hard deletes
+6. **Multi-tenancy**: Organization-based data isolation
+
+## Complete Prisma Schema
+
+```prisma
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE MODELS
+// ============================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users              User[]
+  primaryAccounts    PrimaryAccount[]
+  secondaryAccounts  SecondaryAccount[]
+  holderAccounts     HolderAccount[]
+  transactions       Transaction[]
+  splitTransactions  SplitTransaction[]
+  products           Product[]
+  salesEntries       SalesEntry[]
+  clients            Client[]
+  employees          Employee[]
+  fixedAssets        FixedAsset[]
+  taxConfigurations  TaxConfiguration[]
+  pensionConfigurations PensionConfiguration[]
+  salaryEntries      SalaryEntry[]
+  commissions        Commission[]
+  companySettings    CompanySettings?
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  email          String   @unique
+  username       String   @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  role           UserRole @default(USER)
+  isActive       Boolean  @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditEntries AuditEntry[]
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  USER
+}
+
+// ============================================
+// ACCOUNT HIERARCHY
+// ============================================
+
+model PrimaryAccount {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  type           AccountType
+  description    String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  secondaryAccounts SecondaryAccount[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, type])
+  @@map("primary_accounts")
+}
+
+enum AccountType {
+  ASSETS
+  LIABILITIES
+  EQUITY
+  REVENUE
+  EXPENSES
+}
+
+model SecondaryAccount {
+  id               String   @id @default(uuid())
+  organizationId   String
+  primaryAccountId String
+  name             String
+  code             String
+  description      String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  primaryAccount PrimaryAccount @relation(fields: [primaryAccountId], references: [id], onDelete: Cascade)
+  holderAccounts HolderAccount[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, primaryAccountId])
+  @@map("secondary_accounts")
+}
+
+model HolderAccount {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  secondaryAccountId String
+  code               String
+  name               String
+  description        String?
+  balance            Decimal  @default(0) @db.Decimal(15, 2)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  secondaryAccount SecondaryAccount @relation(fields: [secondaryAccountId], references: [id], onDelete: Cascade)
+  debitTransactions  Transaction[] @relation("DebitAccount")
+  creditTransactions Transaction[] @relation("CreditAccount")
+  products           Product[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, secondaryAccountId])
+  @@index([organizationId, balance])
+  @@map("holder_accounts")
+}
+
+// ============================================
+// TRANSACTIONS
+// ============================================
+
+model Transaction {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  date                 DateTime
+  number               String
+  description          String
+  amount               Decimal  @db.Decimal(15, 2)
+  debitAccountId       String
+  creditAccountId      String
+  reconciled           Boolean  @default(false)
+  splitTransactionId   String?
+  isPettyCash          Boolean  @default(false)
+  parentTransactionId  String?
+  metadata             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  createdBy            String?
+
+  // Relations
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  debitAccount    HolderAccount @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccount   HolderAccount @relation("CreditAccount", fields: [creditAccountId], references: [id])
+  splitTransaction SplitTransaction? @relation(fields: [splitTransactionId], references: [id])
+  auditEntries    AuditEntry[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, date])
+  @@index([organizationId, debitAccountId])
+  @@index([organizationId, creditAccountId])
+  @@index([organizationId, reconciled])
+  @@map("transactions")
+}
+
+model SplitTransaction {
+  id              String   @id @default(uuid())
+  organizationId  String
+  date            DateTime
+  code            String
+  baseAccountId   String
+  baseAccountSide SplitSide
+  splits          Json     // Array of split details
+  totalAmount     Decimal  @db.Decimal(15, 2)
+  reconciled      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, date])
+  @@map("split_transactions")
+}
+
+enum SplitSide {
+  DEBIT
+  CREDIT
+}
+
+model AuditEntry {
+  id             String   @id @default(uuid())
+  organizationId String
+  transactionId  String
+  userId         String?
+  action         AuditAction
+  timestamp      DateTime @default(now())
+  previousValues Json?
+  newValues      Json?
+
+  // Relations
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  user        User? @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, transactionId])
+  @@index([organizationId, timestamp])
+  @@map("audit_entries")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RECONCILE
+  UNRECONCILE
+}
+
+// ============================================
+// PRODUCTS & SALES
+// ============================================
+
+model Product {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  code                 String
+  name                 String
+  description          String?
+  category             String?
+  unitPrice            Decimal  @db.Decimal(15, 2)
+  costPrice            Decimal  @db.Decimal(15, 2)
+  quantityOnHand       Int      @default(0)
+  reorderLevel         Int      @default(0)
+  isActive             Boolean  @default(true)
+  inventoryAccountId   String
+  salesAccountId       String
+  costOfSalesAccountId String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  createdBy            String?
+
+  // Relations
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryAccount     HolderAccount @relation(fields: [inventoryAccountId], references: [id])
+  salesEntries         SalesEntry[]
+  inventoryMovements   InventoryMovement[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("products")
+}
+
+model SalesEntry {
+  id                      String   @id @default(uuid())
+  organizationId          String
+  date                    DateTime
+  salesCode               String
+  productId               String
+  description             String
+  salesValue              Decimal  @db.Decimal(15, 2)
+  costValue               Decimal  @db.Decimal(15, 2)
+  customerAccountId       String
+  costTransactionNumber   String
+  salesTransactionNumber  String
+  invoiceNumber           String?
+  applyVat                Boolean  @default(false)
+  vatRate                 Decimal? @db.Decimal(5, 2)
+  vatAmount               Decimal? @db.Decimal(15, 2)
+  totalWithVat            Decimal? @db.Decimal(15, 2)
+  orderNumber             String?
+  dueDate                 DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product @relation(fields: [productId], references: [id])
+
+  @@unique([organizationId, salesCode])
+  @@index([organizationId, date])
+  @@index([organizationId, productId])
+  @@map("sales_entries")
+}
+
+model InventoryMovement {
+  id              String   @id @default(uuid())
+  organizationId  String
+  date            DateTime
+  productId       String
+  type            MovementType
+  quantity        Int
+  unitCost        Decimal  @db.Decimal(15, 2)
+  totalCost       Decimal  @db.Decimal(15, 2)
+  referenceNumber String
+  description     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([organizationId, date])
+  @@index([organizationId, productId])
+  @@map("inventory_movements")
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+}
+
+// ============================================
+// CLIENTS
+// ============================================
+
+model Client {
+  id               String   @id @default(uuid())
+  organizationId   String
+  clientId         String
+  registrationDate DateTime
+  status           ClientStatus
+  companyName      String
+  companyRegNo     String?
+  address          String?
+  contactPerson    String
+  emailAddress     String
+  phoneNumbers     String
+  remarks          String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        String?
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, clientId])
+  @@index([organizationId, status])
+  @@map("clients")
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// Continue in next message...
+
+
+// ============================================
+// EMPLOYEES & PAYROLL
+// ============================================
+
+model Employee {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  employeeId          String
+  entryDate           DateTime
+  status              EmployeeStatus
+  surname             String
+  firstName           String
+  otherNames          String?
+  dateOfBirth         DateTime
+  placeOfBirth        String?
+  nationality         Nationality
+  gender              Gender
+  maritalStatus       MaritalStatus
+  numberOfChildren    Int      @default(0)
+  residentialAddress  String?
+  emailAddress        String
+  phoneNumber         String
+  position            String?
+  department          String?
+  basicSalary         Decimal  @db.Decimal(15, 2)
+  supervisor          String?
+  entryLevel          String?
+  currentLevel        String?
+  entryBasicSalary    Decimal? @db.Decimal(15, 2)
+  holdingBank         String?
+  bankBranch          String?
+  bankAccountNo       String?
+  taxNumber           String?
+  ssnitNumber         String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  createdBy           String?
+
+  // Relations
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salaryEntries SalaryEntry[]
+  commissions   Commission[]
+
+  @@unique([organizationId, employeeId])
+  @@index([organizationId, status])
+  @@map("employees")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum Nationality {
+  GHANAIAN
+  OTHER
+}
+
+model TaxConfiguration {
+  id              String   @id @default(uuid())
+  organizationId  String
+  effectiveDate   DateTime
+  brackets        Json     // Array of tax brackets
+  nonResidentRate Decimal  @db.Decimal(5, 2)
+  personalRelief  Decimal  @db.Decimal(15, 2)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, effectiveDate])
+  @@index([organizationId, isActive])
+  @@map("tax_configurations")
+}
+
+model PensionConfiguration {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  effectiveDate       DateTime
+  tier1EmployerRate   Decimal  @db.Decimal(5, 2)
+  tier1EmployeeRate   Decimal  @db.Decimal(5, 2)
+  tier1PensionRate    Decimal  @db.Decimal(5, 2)
+  tier1NHISRate       Decimal  @db.Decimal(5, 2)
+  tier2Rate           Decimal  @db.Decimal(5, 2)
+  tier3EmployerRate   Decimal  @db.Decimal(5, 2)
+  tier3EmployeeRate   Decimal  @db.Decimal(5, 2)
+  tier3MaxAmount      Decimal? @db.Decimal(15, 2)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, effectiveDate])
+  @@index([organizationId, isActive])
+  @@map("pension_configurations")
+}
+
+model SalaryEntry {
+  id                String   @id @default(uuid())
+  organizationId    String
+  employeeId        String
+  salaryDate        DateTime
+  processedDate     DateTime
+  basicSalary       Decimal  @db.Decimal(15, 2)
+  allowances        Decimal  @db.Decimal(15, 2)
+  commission        Decimal  @db.Decimal(15, 2)
+  grossSalary       Decimal  @db.Decimal(15, 2)
+  incomeTax         Decimal  @db.Decimal(15, 2)
+  tier1Employee     Decimal  @db.Decimal(15, 2)
+  tier2             Decimal  @db.Decimal(15, 2)
+  tier3Employee     Decimal  @db.Decimal(15, 2)
+  totalSSNIT        Decimal  @db.Decimal(15, 2)
+  otherDeductions   Decimal  @db.Decimal(15, 2)
+  totalDeductions   Decimal  @db.Decimal(15, 2)
+  netSalary         Decimal  @db.Decimal(15, 2)
+  taxConfigId       String?
+  pensionConfigId   String?
+  remarks           String?
+  createdAt         DateTime @default(now())
+  createdBy         String?
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId, salaryDate])
+  @@index([organizationId, employeeId])
+  @@map("salary_entries")
+}
+
+model Commission {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String
+  salesEntryId   String?
+  commissionDate DateTime
+  amount         Decimal  @db.Decimal(15, 2)
+  rate           Decimal  @db.Decimal(5, 2)
+  salesAmount    Decimal  @db.Decimal(15, 2)
+  remarks        String?
+  isPaid         Boolean  @default(false)
+  paidDate       DateTime?
+  salaryEntryId  String?
+  createdAt      DateTime @default(now())
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId, commissionDate])
+  @@index([organizationId, employeeId])
+  @@index([organizationId, isPaid])
+  @@map("commissions")
+}
+
+// ============================================
+// FIXED ASSETS
+// ============================================
+
+model FixedAsset {
+  id                      String   @id @default(uuid())
+  organizationId          String
+  assetCode               String
+  acquisitionDate         DateTime
+  referenceNumber         String?
+  category                AssetCategory
+  assetClass              String?
+  description             String
+  valueAtCost             Decimal  @db.Decimal(15, 2)
+  usefulLife              Int
+  depreciationRate        Decimal  @db.Decimal(5, 2)
+  depreciationType        DepreciationType
+  residualValue           Decimal  @db.Decimal(15, 2)
+  primaryAccountId        String?
+  secondaryAccountId      String?
+  holderAccountId         String?
+  status                  AssetStatus
+  remarks                 String?
+  accumulatedDepreciation Decimal  @db.Decimal(15, 2) @default(0)
+  netBookValue            Decimal  @db.Decimal(15, 2)
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  createdBy               String?
+
+  // Relations
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  depreciationEntries DepreciationEntry[]
+
+  @@unique([organizationId, assetCode])
+  @@index([organizationId, status])
+  @@map("fixed_assets")
+}
+
+enum AssetCategory {
+  BUILDING
+  EQUIPMENT
+  VEHICLE
+  FURNITURE
+  LAND
+  OTHER
+}
+
+enum DepreciationType {
+  STRAIGHT_LINE
+  DECLINING_BALANCE
+  UNITS_OF_PRODUCTION
+}
+
+enum AssetStatus {
+  ACTIVE
+  DISPOSED
+  UNDER_MAINTENANCE
+  RETIRED
+}
+
+model DepreciationEntry {
+  id                      String   @id @default(uuid())
+  assetId                 String
+  period                  DateTime
+  depreciationAmount      Decimal  @db.Decimal(15, 2)
+  accumulatedDepreciation Decimal  @db.Decimal(15, 2)
+  netBookValue            Decimal  @db.Decimal(15, 2)
+  createdAt               DateTime @default(now())
+
+  // Relations
+  asset FixedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, period])
+  @@map("depreciation_entries")
+}
+
+// ============================================
+// COMPANY SETTINGS
+// ============================================
+
+model CompanySettings {
+  id                     String   @id @default(uuid())
+  organizationId         String   @unique
+  companyName            String
+  address                String?
+  city                   String?
+  country                String?
+  phone                  String?
+  email                  String?
+  website                String?
+  logo                   String?
+  bankName               String?
+  bankAccountNumber      String?
+  bankSortCode           String?
+  bankSwiftCode          String?
+  vatRate                Decimal  @db.Decimal(5, 2)
+  vatRegistrationNumber  String?
+  taxId                  String?
+  invoicePrefix          String
+  invoiceNumberFormat    String
+  invoiceTermsDays       Int
+  invoiceFooterText      String?
+  fiscalYearStart        String
+  baseCurrency           String
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
+```
+
+## Migration Commands
+
+```bash
+# Initialize Prisma
+npx prisma init
+
+# Generate Prisma Client
+npx prisma generate
+
+# Create migration
+npx prisma migrate dev --name init
+
+# Apply migration to production
+npx prisma migrate deploy
+
+# Seed database
+npx prisma db seed
+
+# Studio (GUI)
+npx prisma studio
+```
+
+## Indexes Strategy
+
+### High-Priority Indexes
+1. **organizationId** - All tables (multi-tenancy)
+2. **date fields** - Transactions, sales, payroll
+3. **status/isActive** - Filtering active records
+4. **Foreign keys** - Join performance
+
+### Composite Indexes
+1. `[organizationId, date]` - Date range queries
+2. `[organizationId, accountId]` - Account transactions
+3. `[organizationId, status]` - Status filtering
+
+## Row-Level Security (RLS)
+
+Supabase RLS policies to implement:
+
+```sql
+-- Users can only access their organization's data
+CREATE POLICY org_isolation ON transactions
+  FOR ALL
+  USING (organization_id = current_setting('app.current_org_id')::uuid);
+
+-- Apply to all tables
+-- Repeat for each table with organizationId
+```
+
+## Performance Considerations
+
+1. **Connection Pooling**: Use Prisma connection pool
+2. **Query Optimization**: Use `select` to limit fields
+3. **Batch Operations**: Use `createMany`, `updateMany`
+4. **Caching**: Implement Redis for frequent queries
+5. **Pagination**: Always paginate large result sets
+
+## Backup Strategy
+
+1. **Automated Backups**: Supabase daily backups
+2. **Point-in-Time Recovery**: Enable PITR
+3. **Export Scripts**: Regular data exports
+4. **Version Control**: All migrations in Git
+
+---
+
+**Next**: API Standards & Route Design

@@ -1,0 +1,58 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless=false",
+        "--executablePath",
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "take_snapshot",
+        "navigate_page",
+        "new_page",
+        "list_pages",
+        "take_screenshot",
+        "click",
+        "evaluate_script",
+        "fill_form",
+        "wait_for",
+        "fill"
+      ]
+    },
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "51402170-c577-4fa0-8384-b030d0c5bdd4"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "web_search_exa"
+      ]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.supabase.com/mcp"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "list_tables",
+        "list_projects",
+        "apply_migration",
+        "execute_sql"
+      ]
+    }
+  }
+}

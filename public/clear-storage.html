@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Storage - SNM Accounts</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        button {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        button:hover {
+            background: #b91c1c;
+        }
+        .success {
+            background: #10b981;
+            color: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+        }
+        .info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 12px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔧 Clear Storage</h1>
+        <p>This will clear all corrupted data from your browser's local storage.</p>
+        
+        <div class="info">
+            <strong>⚠️ Warning:</strong> This will delete all your data including:
+            <ul>
+                <li>Users</li>
+                <li>Access codes</li>
+                <li>Accounts</li>
+                <li>Transactions</li>
+            </ul>
+        </div>
+
+        <button onclick="clearStorage()">Clear All Data</button>
+        
+        <div class="success" id="success">
+            ✅ Storage cleared successfully! 
+            <br><br>
+            <a href="/" style="color: white; text-decoration: underline;">Go to Home Page</a>
+        </div>
+    </div>
+
+    <script>
+        function clearStorage() {
+            if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+                try {
+                    localStorage.clear();
+                    document.getElementById('success').style.display = 'block';
+                    console.log('Storage cleared successfully');
+                } catch (error) {
+                    alert('Error clearing storage: ' + error.message);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
