@@ -86,18 +86,21 @@ enum UserRole {
 }
 
 model AccessCode {
-  id             String   @id @default(uuid())
-  code           String   @unique
+  id             String    @id @default(uuid())
+  code           String    @unique
+  email          String?   // User's email address
   userId         String
   name           String
-  level          String   // USER_1, USER_2, ADMIN, SUPER_USER
+  level          String    // USER_1, USER_2, ADMIN, SUPER_USER
   organizationId String
-  isUsed         Boolean  @default(false)
+  isUsed         Boolean   @default(false)
+  usedAt         DateTime? // When the code was used
   expiresAt      DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([code])
+  @@index([email, code, isUsed]) // Composite index for fast queries
   @@index([userId])
   @@index([organizationId])
   @@map("access_codes")
@@ -213,11 +216,11 @@ model Transaction {
   splitTransaction SplitTransaction? @relation(fields: [splitTransactionId], references: [id])
   auditEntries    AuditEntry[]
 
-  @@unique([organizationId, number])
   @@index([organizationId, date])
   @@index([organizationId, debitAccountId])
   @@index([organizationId, creditAccountId])
   @@index([organizationId, reconciled])
+  @@index([organizationId, number])
   @@map("transactions")
 }
 

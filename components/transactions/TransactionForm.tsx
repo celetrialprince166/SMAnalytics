@@ -26,6 +26,8 @@ import {
   useCreateTransaction,
   useUpdateTransaction,
 } from '@/hooks/useTransactions';
+import { useDebugMode } from '@/lib/contexts/DebugModeContext';
+import { captureSingleTransaction } from '@/lib/utils/transactionDebugCapture';
 
 interface TransactionFormProps {
   transactionId?: string;
@@ -55,6 +57,9 @@ export function TransactionForm({
   // Date navigation state
   const [dateSearch, setDateSearch] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
+
+  // Debug mode hook
+  const { settings: debugSettings, setCurrentDebugData, addToHistory, openModal } = useDebugMode();
 
   // TanStack Query hooks
   const { data: existingTransaction, isLoading: loadingTransaction } = useTransaction(transactionId);
@@ -128,13 +133,39 @@ export function TransactionForm({
         reconciled,
       };
 
+      let result;
       if (isEditMode && transactionId) {
-        await updateMutation.mutateAsync({
+        result = await updateMutation.mutateAsync({
           transactionId,
           data: transactionData,
         });
       } else {
-        await createMutation.mutateAsync(transactionData);
+        result = await createMutation.mutateAsync(transactionData);
+        
+        // Capture debug data for new transactions if debug mode is enabled
+        if (debugSettings.enabled && result) {
+          try {
+            const debugData = await captureSingleTransaction(
+              result.id,
+              debitAccountId,
+              creditAccountId,
+              amountNum,
+              description,
+              new Date(date)
+            );
+            
+            setCurrentDebugData(debugData);
+            addToHistory(debugData);
+            
+            if (debugSettings.autoShow) {
+              openModal();
+            }
+          } catch (debugError) {
+            console.error('Failed to capture debug data:', debugError);
+            // Don't fail the transaction if debug capture fails
+          }
+        }
+        
         handleNew();
       }
 

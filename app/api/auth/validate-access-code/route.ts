@@ -3,25 +3,22 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, accessCode } = await request.json();
+    const { email, accessCode } = await request.json();
 
-    if (!userId || !accessCode) {
+    if (!email || !accessCode) {
       return NextResponse.json(
-        { error: 'User ID and Access Code are required' },
+        { error: 'Email and Access Code are required' },
         { status: 400 }
       );
     }
 
-    // Find the access code in the database
+    // Find the access code in the database (using composite index)
     const codeRecord = await prisma.accessCode.findFirst({
       where: {
-        code: accessCode,
-        userId: userId,
+        email: email.toLowerCase(),
+        code: accessCode.toUpperCase(),
         isUsed: false,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } }
-        ]
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     });
 

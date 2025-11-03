@@ -24,6 +24,8 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Users
 import { apiSalesService } from '@/lib/services/ApiSalesService';
 import { toast } from 'sonner';
 import { usePDFInvoice } from '@/components/invoice/PDFInvoiceGenerator';
+import { useDebugMode } from '@/lib/contexts/DebugModeContext';
+import { captureSalesTransaction } from '@/lib/utils/transactionDebugCapture';
 
 interface SalesFormDesktopProps {
   onSuccess?: () => void;
@@ -78,6 +80,9 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Debug mode hook
+  const { settings: debugSettings, setCurrentDebugData, addToHistory, openModal } = useDebugMode();
 
   // Data Arrays from APIs
   const [clients, setClients] = useState<Client[]>([]);
@@ -466,10 +471,36 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
         // Create new entry
         const result = await apiSalesService.createSalesEntry(salesRequest);
         toast.success('Sales entry created successfully');
+        
         // Set the newly created entry so Get Reps button appears
         if (result && result.id) {
           setCurrentSalesEntry(result);
           setIsEditMode(true);
+          
+          // Capture debug data if debug mode is enabled
+          if (debugSettings.enabled) {
+            try {
+              const debugData = await captureSalesTransaction(
+                result.id,
+                selectedProductId || selectedServiceId || '',
+                selectedHolderAccountId,
+                salesValue,
+                costValue,
+                new Date(date),
+                applyVat ? vatAmount : undefined,
+                applyVat ? (salesValue + vatAmount) : undefined
+              );
+              
+              setCurrentDebugData(debugData);
+              addToHistory(debugData);
+              
+              if (debugSettings.autoShow) {
+                openModal();
+              }
+            } catch (debugError) {
+              console.error('Failed to capture debug data:', debugError);
+            }
+          }
         }
       }
 

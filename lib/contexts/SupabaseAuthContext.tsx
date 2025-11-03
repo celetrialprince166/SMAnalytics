@@ -203,28 +203,13 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signIn = async (username: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
 
-      // Look up email by username
-      const emailResponse = await fetch('/api/auth/lookup-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
-      });
-
-      if (!emailResponse.ok) {
-        const errorData = await emailResponse.json();
-        setState(prev => ({ ...prev, loading: false }));
-        return { success: false, error: errorData.error || 'Invalid credentials' };
-      }
-
-      const { email } = await emailResponse.json();
-
-      // Sign in with Supabase
+      // Sign in with Supabase directly using email
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.toLowerCase(),
         password,
       });
 
@@ -276,12 +261,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (data: {
     email: string;
-    username: string;
-    password: string;
-    firstName?: string;
-    lastName?: string;
     accessCode: string;
-    userId: string;
+    password: string;
   }) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -303,9 +284,9 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       return { success: true };
     } catch (error) {
       setState(prev => ({ ...prev, loading: false }));
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   };

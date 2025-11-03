@@ -16,6 +16,7 @@ import {
   BarChart3,
   PieChart,
   TrendingUp,
+  UserCog,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +31,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { CollapsibleMenuItem, CollapsibleSubMenuItem } from "@/components/ui/collapsible-menu";
+import { useSupabaseAuth } from "@/lib/contexts/SupabaseAuthContext";
 
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -38,6 +40,8 @@ const menuItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { user } = useSupabaseAuth();
+  const isAdmin = user?.role === 'ADMIN';
 
   return (
     <Sidebar className="border-r border-sidebar-border">
@@ -170,6 +174,27 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === '/admin/users'}
+                  >
+                    <Link href="/admin/users">
+                      <UserCog className="h-4 w-4" />
+                      <span>User Management</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">

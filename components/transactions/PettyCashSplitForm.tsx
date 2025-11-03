@@ -23,6 +23,8 @@ import { usePettyCashAccount } from '@/hooks/usePettyCash';
 import { usePrimaryAccounts, useSecondaryAccounts } from '@/hooks/useAccounts';
 import { PettyCashSplitEntry } from './PettyCashSplitEntry';
 import { apiSplitTransactionService } from '@/lib/services/ApiSplitTransactionService';
+import { useDebugMode } from '@/lib/contexts/DebugModeContext';
+import { captureSplitTransaction } from '@/lib/utils/transactionDebugCapture';
 import {
   Select,
   SelectContent,
@@ -56,6 +58,9 @@ export function PettyCashSplitForm({
   const [reconciled, setReconciled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Debug mode hook
+  const { settings: debugSettings, setCurrentDebugData, addToHistory, openModal } = useDebugMode();
 
   // TanStack Query hooks
   const { data: pettyCashAccount, isLoading: loadingPettyCash } = usePettyCashAccount();
@@ -172,9 +177,37 @@ export function PettyCashSplitForm({
       }
 
       // Use the API service to create split transaction
-      await apiSplitTransactionService.createSplitTransaction(splitData);
+      const result = await apiSplitTransactionService.createSplitTransaction(splitData);
 
       toast.success('Petty cash split transaction created successfully');
+      
+      // Capture debug data if debug mode is enabled
+      if (debugSettings.enabled && result) {
+        try {
+          const debugData = await captureSplitTransaction(
+            result.id,
+            pettyCashAccount.id,
+            pettyCashSide,
+            validSplits.map(s => ({
+              accountId: s.holderAccountId,
+              amount: parseFloat(s.amount),
+              description: s.description,
+            })),
+            new Date(date),
+            true // is petty cash
+          );
+          
+          setCurrentDebugData(debugData);
+          addToHistory(debugData);
+          
+          if (debugSettings.autoShow) {
+            openModal();
+          }
+        } catch (debugError) {
+          console.error('Failed to capture debug data:', debugError);
+        }
+      }
+      
       handleNew();
 
       if (onSuccess) onSuccess();

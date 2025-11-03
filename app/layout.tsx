@@ -5,7 +5,9 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { SupabaseAuthProvider } from '@/lib/contexts/SupabaseAuthContext'
+import { DebugModeProvider } from '@/lib/contexts/DebugModeContext'
 import { SessionTimeoutWarning } from '@/components/auth'
+import { DebugModeToggle, TransactionDebugModal } from '@/components/debug'
 import './globals.css'
 import { useState } from 'react'
 
@@ -31,12 +33,16 @@ export default function RootLayout({
       <body>
         <QueryClientProvider client={queryClient}>
           <SupabaseAuthProvider>
-            <TooltipProvider>
-              {children}
-              <SessionTimeoutWarning />
-              <Toaster />
-              <Sonner />
-            </TooltipProvider>
+            <DebugModeProvider>
+              <TooltipProvider>
+                {children}
+                <SessionTimeoutWarning />
+                <Toaster />
+                <Sonner />
+                <DebugModeToggle />
+                <TransactionDebugModal />
+              </TooltipProvider>
+            </DebugModeProvider>
           </SupabaseAuthProvider>
         </QueryClientProvider>
       </body>

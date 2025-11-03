@@ -18,24 +18,11 @@ import { Loader2 } from 'lucide-react';
 
 export function LoginForm() {
   const router = useRouter();
-  const { signIn, loading: authLoading } = useSupabaseAuth();
-  const [username, setUsername] = useState('');
+  const { signIn } = useSupabaseAuth();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [userLevel, setUserLevel] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const handleUsernameChange = async (value: string) => {
-    setUsername(value);
-    setError('');
-    
-    // Auto-detect user level when username is entered
-    if (value.trim()) {
-      // This would typically query the backend, but we'll check locally
-      // For now, just clear the user level
-      setUserLevel('');
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,12 +30,18 @@ export function LoginForm() {
     setIsLoading(true);
 
     try {
-      const response = await signIn(username, password);
+      const response = await signIn(email, password);
 
       if (response.success) {
         router.push('/dashboard');
       } else {
-        setError(response.error || 'Login failed');
+        // Show helpful message for common errors
+        const errorMsg = response.error || 'Login failed';
+        if (errorMsg.toLowerCase().includes('user not found') || errorMsg.toLowerCase().includes('invalid credentials')) {
+          setError('Account not found. Please sign up first if you have an access code from your administrator.');
+        } else {
+          setError(errorMsg);
+        }
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -72,29 +65,17 @@ export function LoginForm() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="username"
-              type="text"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => handleUsernameChange(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="your.email@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
             />
           </div>
-
-          {userLevel && (
-            <div className="space-y-2">
-              <Label>User Level</Label>
-              <Input
-                type="text"
-                value={userLevel.replace('_', ' ')}
-                disabled
-                className="bg-muted"
-              />
-            </div>
-          )}
 
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>

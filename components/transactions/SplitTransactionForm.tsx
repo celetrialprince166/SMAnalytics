@@ -20,6 +20,8 @@ import { apiSplitTransactionService } from '@/lib/services/ApiSplitTransactionSe
 import { accountService } from '@/lib/services/AccountService';
 import { toast } from 'sonner';
 import { AccountOption } from '@/types';
+import { useDebugMode } from '@/lib/contexts/DebugModeContext';
+import { captureSplitTransaction } from '@/lib/utils/transactionDebugCapture';
 
 interface SplitEntry {
   id: string;
@@ -48,6 +50,9 @@ export function SplitTransactionForm({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [accountOptions, setAccountOptions] = useState<AccountOption[]>([]);
+
+  // Debug mode hook
+  const { settings: debugSettings, setCurrentDebugData, addToHistory, openModal } = useDebugMode();
 
   useEffect(() => {
     loadAccountOptions();
@@ -142,12 +147,41 @@ export function SplitTransactionForm({
         })),
       };
 
+      let result;
       if (splitTransactionId) {
-        await apiSplitTransactionService.updateSplitTransaction(splitTransactionId, splitData);
+        result = await apiSplitTransactionService.updateSplitTransaction(splitTransactionId, splitData);
         toast.success('Split transaction updated successfully');
       } else {
-        await apiSplitTransactionService.createSplitTransaction(splitData);
+        result = await apiSplitTransactionService.createSplitTransaction(splitData);
         toast.success('Split transaction created successfully');
+        
+        // Capture debug data if debug mode is enabled
+        if (debugSettings.enabled && result) {
+          try {
+            const debugData = await captureSplitTransaction(
+              result.id,
+              baseAccountId,
+              baseAccountSide,
+              validSplits.map(s => ({
+                accountId: s.accountId,
+                amount: parseFloat(s.amount),
+                description: s.description,
+              })),
+              new Date(date),
+              false // not petty cash
+            );
+            
+            setCurrentDebugData(debugData);
+            addToHistory(debugData);
+            
+            if (debugSettings.autoShow) {
+              openModal();
+            }
+          } catch (debugError) {
+            console.error('Failed to capture debug data:', debugError);
+          }
+        }
+        
         handleNew();
       }
 

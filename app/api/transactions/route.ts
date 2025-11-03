@@ -129,80 +129,86 @@ export async function POST(req: NextRequest) {
       isPettyCash: isPettyCash,
     };
 
-    // Create transaction using a transaction to ensure atomicity
-    const transaction = await prisma.$transaction(async (tx) => {
-      // Generate unique transaction number atomically within the transaction
-      let transactionNumber: string;
+    // Calculate date range for transaction number generation
+    const date = body.date ? new Date(body.date) : new Date();
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
 
-      // Calculate date range for transaction number generation
-      const date = body.date ? new Date(body.date) : new Date();
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+    // Retry logic for unique constraint violations (outside of Prisma transaction)
+    let transaction;
+    let retryCount = 0;
+    const maxRetries = 3;
 
-      if (body.number) {
-        // Use provided number if given
-        transactionNumber = body.number;
-      } else {
-        // Generate next sequential number atomically within the transaction
+    while (retryCount < maxRetries) {
+      try {
+        // Create transaction using a transaction to ensure atomicity
+        transaction = await prisma.$transaction(async (tx) => {
+          // Generate unique transaction number atomically within the transaction
+          let transactionNumber: string;
 
-        // Get existing transactions for today to determine next number (within transaction)
-        const existingTransactions = await tx.transaction.findMany({
-          where: {
-            organizationId,
-            date: {
-              gte: startOfDay,
-              lt: endOfDay,
-            },
-          },
-          select: {
-            number: true,
-          },
-          orderBy: {
-            number: 'desc',
-          },
-        });
+          if (body.number) {
+            // Use provided number if given
+            transactionNumber = body.number;
+          } else {
+            // Generate next sequential number atomically within the transaction
 
-        // Parse max base number from existing transactions
-        let maxBase = 0;
-        const baseCounts: Record<number, number> = {};
+            // Get ALL existing transactions for this organization to determine next number
+            // Note: The unique constraint is on (organizationId, number) so numbers must be globally unique
+            const existingTransactions = await tx.transaction.findMany({
+              where: {
+                organizationId,
+              },
+              select: {
+                number: true,
+              },
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: 100, // Only check last 100 transactions for performance
+            });
 
-        for (const transaction of existingTransactions) {
-          try {
-            const num = parseFloat(transaction.number);
-            if (!isNaN(num) && isFinite(num)) {
-              const base = Math.floor(num);
-              const decimal = Math.round((num - base) * 100);
+            // Parse max base number from existing transactions
+            let maxBase = 0;
+            const baseCounts: Record<number, number> = {};
 
-              maxBase = Math.max(maxBase, base);
+            for (const transaction of existingTransactions) {
+              try {
+                const num = parseFloat(transaction.number);
+                if (!isNaN(num) && isFinite(num)) {
+                  const base = Math.floor(num);
+                  const decimal = Math.round((num - base) * 100);
 
-              // Track children count for each base
-              if (decimal > 0) {
-                baseCounts[base] = Math.max(baseCounts[base] || 0, decimal);
+                  maxBase = Math.max(maxBase, base);
+
+                  // Track children count for each base
+                  if (decimal > 0) {
+                    baseCounts[base] = Math.max(baseCounts[base] || 0, decimal);
+                  }
+                }
+                // Skip non-numeric transaction numbers (like "TEST-001", "SPL-TEST-02")
+              } catch (error) {
+                console.error('Error parsing transaction number:', transaction.number, error);
               }
             }
-            // Skip non-numeric transaction numbers (like "TEST-001", "SPL-TEST-02")
-          } catch (error) {
-            console.error('Error parsing transaction number:', transaction.number, error);
-          }
-        }
 
-        // Generate next number based on type
-        if (transactionType === 'single') {
-          // For single transactions, return next base with .00
-          const nextBase = maxBase + 1;
-          transactionNumber = `${nextBase}.00`;
-        } else if (transactionType === 'split' || transactionType === 'petty') {
-          // For split/petty cash, we need to return the base number
-          // The children will be numbered as base.01, base.02, etc.
-          const nextBase = maxBase + 1;
-          transactionNumber = `${nextBase}.01`;
-        } else {
-          // Fallback
-          transactionNumber = `${maxBase + 1}.00`;
-        }
-      }
+            // Generate next number based on type
+            // Add retry count to ensure uniqueness on retries
+            if (transactionType === 'single') {
+              // For single transactions, return next base with .00
+              const nextBase = maxBase + 1 + retryCount;
+              transactionNumber = `${nextBase}.00`;
+            } else if (transactionType === 'split' || transactionType === 'petty') {
+              // For split/petty cash, we need to return the base number
+              // The children will be numbered as base.01, base.02, etc.
+              const nextBase = maxBase + 1 + retryCount;
+              transactionNumber = `${nextBase}.01`;
+            } else {
+              // Fallback
+              transactionNumber = `${maxBase + 1 + retryCount}.00`;
+            }
+          }
 
       // Create transaction data with generated number
       const finalTransactionData = {
@@ -243,70 +249,13 @@ export async function POST(req: NextRequest) {
         return accountTypeMap[accountId];
       };
 
-      // Create the transaction record with retry logic for unique constraint
-      let newTransaction;
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      while (retryCount < maxRetries) {
-        try {
-          newTransaction = await tx.transaction.create({
+          // Create the transaction record
+          const newTransaction = await tx.transaction.create({
             data: finalTransactionData,
           });
-          break; // Success, exit retry loop
-        } catch (error: any) {
-          if (error.code === 'P2002' && error.meta?.target?.includes('number')) {
-            // Unique constraint violation on number field
-            retryCount++;
-            if (retryCount >= maxRetries) {
-              throw error; // Give up after max retries
-            }
-            
-            // Regenerate transaction number and retry
-            console.log(`Retry ${retryCount}: Regenerating transaction number due to unique constraint violation`);
-            
-            // Get fresh transaction count and regenerate number
-            const freshTransactions = await tx.transaction.findMany({
-              where: {
-                organizationId,
-                date: {
-                  gte: startOfDay,
-                  lt: endOfDay,
-                },
-              },
-              select: { number: true },
-              orderBy: { number: 'desc' },
-            });
 
-            let freshMaxBase = 0;
-            for (const transaction of freshTransactions) {
-              try {
-                const num = parseFloat(transaction.number);
-                if (!isNaN(num) && isFinite(num)) {
-                  const base = Math.floor(num);
-                  freshMaxBase = Math.max(freshMaxBase, base);
-                }
-              } catch (error) {
-                // Skip non-numeric numbers
-              }
-            }
-
-            const freshNextBase = freshMaxBase + 1;
-            const freshTransactionNumber = `${freshNextBase}.00`;
-            
-            // Update the transaction data with new number
-            finalTransactionData.number = freshTransactionNumber;
-            
-            // Add small delay to reduce race condition probability
-            await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
-          } else {
-            throw error; // Re-throw non-unique constraint errors
-          }
-        }
-      }
-
-      // Create audit entry immediately after transaction creation (while transaction context is still valid)
-      await tx.auditEntry.create({
+          // Create audit entry immediately after transaction creation (while transaction context is still valid)
+          await tx.auditEntry.create({
         data: {
           organizationId,
           transactionId: newTransaction.id,
@@ -362,8 +311,33 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      return newTransaction;
-    });
+          return newTransaction;
+        });
+
+        // If we get here, transaction was successful
+        break;
+
+      } catch (error: any) {
+        if (error.code === 'P2002' && error.meta?.target?.includes('number')) {
+          // Unique constraint violation on number field
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            console.error(`Failed to create transaction after ${maxRetries} retries`);
+            throw error; // Give up after max retries
+          }
+          
+          console.log(`Retry ${retryCount}: Regenerating transaction number due to unique constraint violation`);
+          
+          // Add small delay to reduce race condition probability
+          await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+          
+          // Loop will retry with fresh transaction number generation
+        } else {
+          // Re-throw non-unique constraint errors immediately
+          throw error;
+        }
+      }
+    }
 
     return successResponse(transaction, 201);
   } catch (error: any) {
