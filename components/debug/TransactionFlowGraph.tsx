@@ -34,6 +34,31 @@ const nodeTypes = {
 export function TransactionFlowGraph({ debugData }: TransactionFlowGraphProps) {
   const { settings } = useDebugMode();
   
+  // Debug logging for visualization data
+  console.log('[DEBUG VISUALIZATION] ═══════════════════════════════════════════════════════════');
+  console.log('[DEBUG VISUALIZATION] TransactionFlowGraph received data:');
+  console.log('[DEBUG VISUALIZATION] Transaction Type:', debugData.transactionType);
+  console.log('[DEBUG VISUALIZATION] Transaction ID:', debugData.transactionId);
+  console.log('[DEBUG VISUALIZATION] Account count:', debugData.accounts.length);
+  console.log('[DEBUG VISUALIZATION] Flow count:', debugData.flows.length);
+  console.log('[DEBUG VISUALIZATION] Accounts:');
+  debugData.accounts.forEach((account, i) => {
+    console.log(`[DEBUG VISUALIZATION]   ${i + 1}. ${account.name} (${account.code})`);
+    console.log(`[DEBUG VISUALIZATION]      ID: ${account.id}`);
+    console.log(`[DEBUG VISUALIZATION]      Type: ${account.type}`);
+    console.log(`[DEBUG VISUALIZATION]      Before: ${account.balanceBefore}`);
+    console.log(`[DEBUG VISUALIZATION]      Change: ${account.balanceChange}`);
+    console.log(`[DEBUG VISUALIZATION]      After: ${account.balanceAfter}`);
+  });
+  console.log('[DEBUG VISUALIZATION] Flows:');
+  debugData.flows.forEach((flow, i) => {
+    console.log(`[DEBUG VISUALIZATION]   ${i + 1}. ${flow.label || flow.description}`);
+    console.log(`[DEBUG VISUALIZATION]      From: ${flow.fromAccountId}`);
+    console.log(`[DEBUG VISUALIZATION]      To: ${flow.toAccountId}`);
+    console.log(`[DEBUG VISUALIZATION]      Amount: ${flow.amount}`);
+  });
+  console.log('[DEBUG VISUALIZATION] ═══════════════════════════════════════════════════════════');
+  
   // Generate nodes from accounts
   const initialNodes: Node[] = useMemo(() => {
     const isHorizontal = settings.layout === 'horizontal';

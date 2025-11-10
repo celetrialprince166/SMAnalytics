@@ -283,7 +283,7 @@ export function SalesListDesktop({ refreshTrigger, onGenerateInvoice, onSelectFo
                               </TableCell>
                               <TableCell>
                                 <div>
-                                  <div className="font-medium">{sale.productName || 'N/A'}</div>
+                                  <div className="font-medium">{sale.serviceName || sale.productName || 'N/A'}</div>
                                   <div className="text-sm text-gray-500">
                                     {sale.salesCode}
                                   </div>
@@ -291,7 +291,7 @@ export function SalesListDesktop({ refreshTrigger, onGenerateInvoice, onSelectFo
                               </TableCell>
                               <TableCell>
                                 <div className="text-sm text-gray-600">
-                                  {sale.description || 'N/A'}
+                                  {sale.serviceLineName || sale.description || 'N/A'}
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">

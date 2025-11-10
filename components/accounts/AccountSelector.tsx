@@ -3,7 +3,7 @@
 /**
  * Account Selector Component
  * 
- * Hierarchical account selector with balance display
+ * Hierarchical account selector with balance display and quick account creation
  */
 
 import { useState, useEffect } from 'react';
@@ -12,6 +12,9 @@ import { PrimaryAccount, SecondaryAccount, HolderAccount } from '@/types';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { CreateHolderAccountDialog } from './CreateHolderAccountDialog';
 
 interface AccountSelectorProps {
   label?: string;
@@ -42,6 +45,7 @@ export function AccountSelector({
   const [selectedHolder, setSelectedHolder] = useState('');
   const [balance, setBalance] = useState(0);
   const [isLoadingHierarchy, setIsLoadingHierarchy] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   useEffect(() => {
     loadPrimaryAccounts();
@@ -76,11 +80,13 @@ export function AccountSelector({
   }, [selectedSecondary, isLoadingHierarchy]);
 
   useEffect(() => {
-    if (selectedHolder) {
+    if (selectedHolder && !isLoadingHierarchy) {
       loadBalance(selectedHolder);
       onChange(selectedHolder);
+    } else if (!selectedHolder) {
+      setBalance(0);
     }
-  }, [selectedHolder]);
+  }, [selectedHolder, isLoadingHierarchy]);
 
   const loadPrimaryAccounts = async () => {
     try {
@@ -106,7 +112,12 @@ export function AccountSelector({
   const loadHolderAccounts = async (secondaryId: string) => {
     try {
       const accounts = await apiAccountService.getHolderAccounts(secondaryId);
-      setHolderAccounts(accounts);
+      // Ensure balance is properly converted to number
+      const accountsWithBalance = accounts.map(acc => ({
+        ...acc,
+        balance: Number(acc.balance) || 0
+      }));
+      setHolderAccounts(accountsWithBalance);
     } catch (err) {
       console.error('Error loading holder accounts:', err);
     }
@@ -114,10 +125,16 @@ export function AccountSelector({
 
   const loadBalance = async (holderId: string) => {
     try {
-      const bal = await apiAccountService.getAccountBalance(holderId);
-      setBalance(bal);
+      // Fetch the holder account directly to get the most up-to-date balance
+      const account = await apiAccountService.getHolderAccountById(holderId);
+      if (account) {
+        setBalance(Number(account.balance) || 0);
+      } else {
+        setBalance(0);
+      }
     } catch (err) {
       console.error('Error loading balance:', err);
+      setBalance(0);
     }
   };
 
@@ -151,6 +168,28 @@ export function AccountSelector({
       console.error('Error loading account hierarchy:', err);
     } finally {
       setIsLoadingHierarchy(false);
+    }
+  };
+
+  const handleCreateAccount = () => {
+    if (!selectedSecondary) {
+      return;
+    }
+    setShowCreateDialog(true);
+  };
+
+  const handleAccountCreated = async (newAccountId: string) => {
+    // Reload holder accounts for the selected secondary account
+    if (selectedSecondary) {
+      const accounts = await apiAccountService.getHolderAccounts(selectedSecondary);
+      const accountsWithBalance = accounts.map(acc => ({
+        ...acc,
+        balance: Number(acc.balance) || 0
+      }));
+      setHolderAccounts(accountsWithBalance);
+      
+      // Auto-select the newly created account
+      setSelectedHolder(newAccountId);
     }
   };
 
@@ -199,7 +238,21 @@ export function AccountSelector({
         </div>
 
         <div className="space-y-2">
-          <Label>{label}</Label>
+          <div className="flex items-center justify-between">
+            <Label>{label}</Label>
+            {selectedSecondary && !disabled && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleCreateAccount}
+                className="h-6 px-2 text-xs"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                New
+              </Button>
+            )}
+          </div>
           <Select
             value={selectedHolder}
             onValueChange={setSelectedHolder}
@@ -209,13 +262,19 @@ export function AccountSelector({
               <SelectValue placeholder="Select account" />
             </SelectTrigger>
             <SelectContent>
-              {holderAccounts
-                .filter(account => !excludeAccountId || account.id !== excludeAccountId)
-                .map(account => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.name} ({account.code})
-                  </SelectItem>
-                ))}
+              {holderAccounts.length === 0 && selectedSecondary ? (
+                <div className="p-2 text-center text-sm text-muted-foreground">
+                  No accounts found. Click "New" to create one.
+                </div>
+              ) : (
+                holderAccounts
+                  .filter(account => !excludeAccountId || account.id !== excludeAccountId)
+                  .map(account => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} ({account.code})
+                    </SelectItem>
+                  ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -230,6 +289,22 @@ export function AccountSelector({
             className="bg-muted font-mono"
           />
         </div>
+      )}
+
+      {/* Create Holder Account Dialog */}
+      {selectedSecondary && (
+        <CreateHolderAccountDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          secondaryAccountId={selectedSecondary}
+          secondaryAccountName={
+            secondaryAccounts.find(s => s.id === selectedSecondary)?.name || ''
+          }
+          secondaryAccountCode={
+            secondaryAccounts.find(s => s.id === selectedSecondary)?.code || ''
+          }
+          onSuccess={handleAccountCreated}
+        />
       )}
     </div>
   );

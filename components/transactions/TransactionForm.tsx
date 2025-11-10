@@ -140,6 +140,24 @@ export function TransactionForm({
           data: transactionData,
         });
       } else {
+        // Capture "before" balances if debug mode is enabled
+        let beforeData;
+        if (debugSettings.enabled) {
+          try {
+            const { captureSingleTransactionBefore } = await import('@/lib/utils/transactionDebugCapture');
+            beforeData = await captureSingleTransactionBefore(
+              debitAccountId,
+              creditAccountId,
+              amountNum,
+              description,
+              new Date(date)
+            );
+          } catch (debugError) {
+            console.error('Failed to capture before data:', debugError);
+          }
+        }
+        
+        // Create the transaction
         result = await createMutation.mutateAsync(transactionData);
         
         // Capture debug data for new transactions if debug mode is enabled
@@ -151,7 +169,8 @@ export function TransactionForm({
               creditAccountId,
               amountNum,
               description,
-              new Date(date)
+              new Date(date),
+              beforeData
             );
             
             setCurrentDebugData(debugData);

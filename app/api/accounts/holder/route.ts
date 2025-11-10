@@ -93,34 +93,13 @@ export async function POST(req: NextRequest) {
       return errorResponse('secondaryAccountId and name are required', 400);
     }
 
-    // Get organization ID from authenticated user (for now, use a default or from request)
-    // In production, this should come from the authenticated session
-    const organizationId = body.organizationId || '1759897262597-d7qeu594i'; // Default org ID
-
-    // Generate code if not provided
-    let code = body.code;
-    if (!code) {
-      const secondaryAccount = await prisma.secondaryAccount.findUnique({
-        where: { id: body.secondaryAccountId },
-        select: { code: true },
-      });
-
-      if (!secondaryAccount) {
-        return errorResponse('Secondary account not found', 404);
-      }
-
-      const count = await prisma.holderAccount.count({
-        where: { secondaryAccountId: body.secondaryAccountId },
-      });
-
-      const nextNumber = String(count + 1).padStart(3, '0');
-      code = `${secondaryAccount.code}-${nextNumber}`;
-    }
-
-    // Verify secondary account exists and is active
+    // Get organization ID from the secondary account
     const secondaryAccount = await prisma.secondaryAccount.findUnique({
       where: { id: body.secondaryAccountId },
-      include: {
+      select: { 
+        organizationId: true,
+        code: true,
+        isActive: true,
         primaryAccount: {
           select: { id: true, isActive: true },
         },
@@ -131,12 +110,26 @@ export async function POST(req: NextRequest) {
       return errorResponse('Secondary account not found', 404);
     }
 
+    const organizationId = secondaryAccount.organizationId;
+
+    // Verify secondary account is active
     if (!secondaryAccount.isActive) {
       return errorResponse('Cannot create holder account under inactive secondary account', 400);
     }
 
     if (!secondaryAccount.primaryAccount.isActive) {
       return errorResponse('Cannot create holder account under inactive primary account', 400);
+    }
+
+    // Generate code if not provided
+    let code = body.code;
+    if (!code) {
+      const count = await prisma.holderAccount.count({
+        where: { secondaryAccountId: body.secondaryAccountId },
+      });
+
+      const nextNumber = String(count + 1).padStart(3, '0');
+      code = `${secondaryAccount.code}-${nextNumber}`;
     }
 
     // Check if code already exists

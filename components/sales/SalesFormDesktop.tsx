@@ -70,6 +70,14 @@ interface HolderAccount {
   code: string;
   name: string;
   balance: number;
+  secondaryAccountId?: string;
+}
+
+interface SecondaryAccount {
+  id: string;
+  code: string;
+  name: string;
+  primaryAccountId: string;
 }
 
 export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentatives }: SalesFormDesktopProps) {
@@ -89,7 +97,9 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [secondaryAccounts, setSecondaryAccounts] = useState<SecondaryAccount[]>([]);
   const [holderAccounts, setHolderAccounts] = useState<HolderAccount[]>([]);
+  const [filteredHolderAccounts, setFilteredHolderAccounts] = useState<HolderAccount[]>([]);
 
   // Form State
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -99,6 +109,7 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
   const [tn, setTn] = useState('1');
   const [salesCode, setSalesCode] = useState('');
 
+  const [selectedSecondaryAccountId, setSelectedSecondaryAccountId] = useState('');
   const [selectedHolderAccountId, setSelectedHolderAccountId] = useState('');
   const [applyVat, setApplyVat] = useState(false);
   const [vatRate, setVatRate] = useState(15);
@@ -268,6 +279,40 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
     loadExistingSalesEntries();
   }, []);
 
+  // Filter holder accounts when secondary account changes
+  useEffect(() => {
+    console.log('Filtering holder accounts:', {
+      selectedSecondaryAccountId,
+      totalHolderAccounts: holderAccounts.length,
+      sampleAccount: holderAccounts[0],
+    });
+    
+    if (selectedSecondaryAccountId) {
+      const filtered = holderAccounts.filter(
+        (account) => account.secondaryAccountId === selectedSecondaryAccountId
+      );
+      
+      console.log('Filtered holder accounts:', {
+        filteredCount: filtered.length,
+        filtered: filtered.map(a => ({ id: a.id, name: a.name, secondaryAccountId: a.secondaryAccountId })),
+      });
+      
+      setFilteredHolderAccounts(filtered);
+      
+      // Reset holder account selection if current selection is not in filtered list
+      if (selectedHolderAccountId && !filtered.find(a => a.id === selectedHolderAccountId)) {
+        setSelectedHolderAccountId('');
+      }
+      
+      // Auto-select first holder account if available
+      if (filtered.length > 0 && !selectedHolderAccountId) {
+        setSelectedHolderAccountId(filtered[0].id);
+      }
+    } else {
+      setFilteredHolderAccounts(holderAccounts);
+    }
+  }, [selectedSecondaryAccountId, holderAccounts, selectedHolderAccountId]);
+
   // Load services when service line changes
   useEffect(() => {
     if (selectedServiceLineId) {
@@ -309,24 +354,26 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
       setError('');
 
       // Load all data in parallel
-      const [clientsData, serviceLinesData, productsData, accountsData] = await Promise.all([
+      const [clientsData, serviceLinesData, productsData, secondaryAccountsData, accountsData] = await Promise.all([
         fetchClients(),
         fetchServiceLines(),
         fetchProducts(),
+        fetchSecondaryAccounts(),
         fetchHolderAccounts()
       ]);
 
       setClients(clientsData);
       setServiceLines(serviceLinesData);
       setProducts(productsData);
+      setSecondaryAccounts(secondaryAccountsData);
       setHolderAccounts(accountsData);
 
       // Auto-select first options if available
       if (clientsData.length > 0) {
         setSelectedClientId(clientsData[0].id);
       }
-      if (accountsData.length > 0) {
-        setSelectedHolderAccountId(accountsData[0].id);
+      if (secondaryAccountsData.length > 0) {
+        setSelectedSecondaryAccountId(secondaryAccountsData[0].id);
       }
       if (serviceLinesData.length > 0) {
         setSelectedServiceLineId(serviceLinesData[0].id);
@@ -409,14 +456,40 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
     }
   };
 
+  const fetchSecondaryAccounts = async (): Promise<SecondaryAccount[]> => {
+    try {
+      const response = await fetch('/api/accounts/secondary');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch secondary accounts: ${response.statusText}`);
+      }
+      const data = await response.json();
+      // Filter to only show Cash & Bank Balances and Accounts Receivable
+      const filtered = (data.data || []).filter((account: SecondaryAccount) => 
+        account.name === 'Cash & Bank Balances' || account.name === 'Accounts Receivable'
+      );
+      return filtered;
+    } catch (error) {
+      console.error('Error fetching secondary accounts:', error);
+      return [];
+    }
+  };
+
   const fetchHolderAccounts = async (): Promise<HolderAccount[]> => {
     try {
-      const response = await fetch('/api/accounts/holder');
+      const response = await fetch('/api/accounts/holder?limit=1000');
       if (!response.ok) {
         throw new Error(`Failed to fetch holder accounts: ${response.statusText}`);
       }
       const data = await response.json();
-      return data.data || [];
+      // Extract the data array from paginated response and map to include secondaryAccountId
+      const accounts = data.data?.data || data.data || [];
+      return accounts.map((account: any) => ({
+        id: account.id,
+        code: account.code,
+        name: account.name,
+        balance: account.balance,
+        secondaryAccountId: account.secondaryAccountId,
+      }));
     } catch (error) {
       console.error('Error fetching holder accounts:', error);
       return [];
@@ -468,6 +541,20 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
         await apiSalesService.updateSalesEntry(currentSalesEntry.id, salesRequest);
         toast.success('Sales entry updated successfully');
       } else {
+        // Capture "before" balances if debug mode is enabled
+        let beforeData;
+        if (debugSettings.enabled) {
+          try {
+            const { captureSalesTransactionBefore } = await import('@/lib/utils/transactionDebugCapture');
+            beforeData = await captureSalesTransactionBefore(
+              selectedProductId || selectedServiceId || '',
+              selectedHolderAccountId
+            );
+          } catch (debugError) {
+            console.error('Failed to capture before data:', debugError);
+          }
+        }
+        
         // Create new entry
         const result = await apiSalesService.createSalesEntry(salesRequest);
         toast.success('Sales entry created successfully');
@@ -488,7 +575,8 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
                 costValue,
                 new Date(date),
                 applyVat ? vatAmount : undefined,
-                applyVat ? (salesValue + vatAmount) : undefined
+                applyVat ? (salesValue + vatAmount) : undefined,
+                beforeData
               );
               
               setCurrentDebugData(debugData);
@@ -539,8 +627,8 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
     if (clients.length > 0) {
       setSelectedClientId(clients[0].id);
     }
-    if (holderAccounts.length > 0) {
-      setSelectedHolderAccountId(holderAccounts[0].id);
+    if (secondaryAccounts.length > 0) {
+      setSelectedSecondaryAccountId(secondaryAccounts[0].id);
     }
     if (serviceLines.length > 0) {
       setSelectedServiceLineId(serviceLines[0].id);
@@ -829,19 +917,51 @@ export function SalesFormDesktop({ onSuccess, onCancel, onSelectForRepresentativ
             <h3 className="text-lg font-semibold mb-4">Receivable/Receipt Account</h3>
             <div className="space-y-4">
               <div>
-                <Label>Customer Account</Label>
-                <Select value={selectedHolderAccountId} onValueChange={setSelectedHolderAccountId}>
+                <Label>Account Type *</Label>
+                <Select value={selectedSecondaryAccountId} onValueChange={setSelectedSecondaryAccountId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select customer account" />
+                    <SelectValue placeholder="Select account type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {holderAccounts.map((account) => (
+                    {secondaryAccounts.map((account) => (
                       <SelectItem key={account.id} value={account.id}>
                         {account.name} ({account.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label>Customer Account *</Label>
+                <Select 
+                  value={selectedHolderAccountId} 
+                  onValueChange={setSelectedHolderAccountId}
+                  disabled={!selectedSecondaryAccountId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedSecondaryAccountId ? "Select customer account" : "Select account type first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredHolderAccounts.length === 0 ? (
+                      <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                        No accounts found under selected account type.
+                        <br />
+                        Please create holder accounts first.
+                      </div>
+                    ) : (
+                      filteredHolderAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name} ({account.code})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {selectedSecondaryAccountId && filteredHolderAccounts.length === 0 && (
+                  <p className="text-sm text-amber-600 mt-1">
+                    ⚠️ No holder accounts found. Go to Manage → Accounts to create accounts under this type.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="flex items-center space-x-2">

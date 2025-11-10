@@ -158,6 +158,8 @@ export async function POST(req: NextRequest) {
 
     // Get service (if serviceId is provided)
     let service = null;
+    let serviceRevenueAccountId = null;
+    
     if (body.serviceId) {
       service = await prisma.service.findFirst({
         where: {
@@ -178,6 +180,68 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+
+      // Find or create holder account for this service under "Sales" secondary account
+      // First, find the "Sales" secondary account
+      const salesSecondaryAccount = await prisma.secondaryAccount.findFirst({
+        where: {
+          organizationId: defaultOrgId,
+          name: 'Sales',
+          isActive: true,
+        },
+      });
+
+      if (!salesSecondaryAccount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              message: 'Sales secondary account not found. Please create it first.',
+            },
+          },
+          { status: 400 }
+        );
+      }
+
+      // Check if holder account exists for this service
+      const serviceAccountName = `${service.name} Revenue`;
+      let serviceRevenueAccount = await prisma.holderAccount.findFirst({
+        where: {
+          organizationId: defaultOrgId,
+          secondaryAccountId: salesSecondaryAccount.id,
+          name: serviceAccountName,
+          isActive: true,
+        },
+      });
+
+      // If not found, create it
+      if (!serviceRevenueAccount) {
+        // Get the count of existing holder accounts under Sales to generate code
+        const existingCount = await prisma.holderAccount.count({
+          where: {
+            organizationId: defaultOrgId,
+            secondaryAccountId: salesSecondaryAccount.id,
+          },
+        });
+
+        const holderCode = `${salesSecondaryAccount.code}-${String(existingCount + 1).padStart(3, '0')}`;
+
+        serviceRevenueAccount = await prisma.holderAccount.create({
+          data: {
+            organizationId: defaultOrgId,
+            secondaryAccountId: salesSecondaryAccount.id,
+            code: holderCode,
+            name: serviceAccountName,
+            description: `Revenue account for ${service.name}`,
+            balance: 0,
+            isActive: true,
+          },
+        });
+
+        console.log(`Auto-created holder account: ${serviceAccountName} (${holderCode})`);
+      }
+
+      serviceRevenueAccountId = serviceRevenueAccount.id;
     }
 
     // Verify customer account exists
@@ -201,7 +265,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate sales code and transaction numbers
+    // Generate sales code
     const today = new Date(body.date);
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
     
@@ -227,8 +291,39 @@ export async function POST(req: NextRequest) {
     }
 
     const salesCode = `S-${dateStr}-${sequence.toString().padStart(3, '0')}`;
-    const costTransactionNumber = `CT-${dateStr}-${sequence.toString().padStart(3, '0')}`;
-    const salesTransactionNumber = `ST-${dateStr}-${sequence.toString().padStart(3, '0')}`;
+    
+    // Generate transaction numbers using the same logic as normal transactions (decimal format)
+    // Get ALL existing transactions to determine next number
+    const existingTransactions = await prisma.transaction.findMany({
+      where: {
+        organizationId: defaultOrgId,
+      },
+      select: {
+        number: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 100, // Only check last 100 transactions for performance
+    });
+
+    // Parse max base number from existing transactions
+    let maxBase = 0;
+    for (const transaction of existingTransactions) {
+      try {
+        const num = parseFloat(transaction.number);
+        if (!isNaN(num) && isFinite(num)) {
+          const base = Math.floor(num);
+          maxBase = Math.max(maxBase, base);
+        }
+      } catch (error) {
+        console.error('Error parsing transaction number:', transaction.number, error);
+      }
+    }
+
+    // Generate next transaction numbers in decimal format
+    const costTransactionNumber = `${maxBase + 1}.00`;
+    const salesTransactionNumber = `${maxBase + 2}.00`;
 
     // Calculate VAT if applicable
     let vatAmount = 0;
@@ -312,9 +407,9 @@ export async function POST(req: NextRequest) {
             creditAccountId: product.salesAccountId,
           }
         });
-      } else if (service) {
-        // Service-based transactions - simplified for now
-        // For services, we typically don't have inventory, so we'll create a simpler transaction structure
+      } else if (service && serviceRevenueAccountId) {
+        // Service-based transactions
+        // For services, we only create the revenue transaction (no inventory/cost of sales)
         salesTransaction = await tx.transaction.create({
           data: {
             organizationId: defaultOrgId,
@@ -323,41 +418,138 @@ export async function POST(req: NextRequest) {
             description: `Service Revenue - ${body.description}`,
             amount: totalWithVat,
             debitAccountId: body.customerAccountId,
-            creditAccountId: body.customerAccountId, // Using customer account for both sides as placeholder
+            creditAccountId: serviceRevenueAccountId, // Use the auto-created service revenue account
           }
         });
       }
 
       console.log('Transactions created successfully');
 
-      // Update account balances for all transactions (consistent with transaction API)
+      // Update account balances using proper double-entry accounting rules
+      // Helper function to calculate balance change based on account type
+      const calculateBalanceChange = (accountType: string, amount: number, side: 'debit' | 'credit'): number => {
+        // ASSETS, EXPENSES: Debit increases, Credit decreases
+        // LIABILITIES, EQUITY, REVENUE: Credit increases, Debit decreases
+        
+        if (side === 'debit') {
+          if (accountType === 'ASSETS' || accountType === 'EXPENSES') {
+            return amount; // Increase
+          } else {
+            return -amount; // Decrease
+          }
+        } else {
+          // Credit side
+          if (accountType === 'LIABILITIES' || accountType === 'EQUITY' || accountType === 'REVENUE') {
+            return amount; // Increase
+          } else {
+            return -amount; // Decrease
+          }
+        }
+      };
+
+      // Update cost transaction balances (if exists)
       if (costTransaction) {
-        // Cost of Sales: Update both debit and credit accounts
-        await tx.holderAccount.update({
-          where: { id: costTransaction.debitAccountId },
-          data: { balance: { increment: costTransaction.amount } }
-        });
+        // Fetch account types to determine proper balance changes
+        const [costDebitAccount, costCreditAccount] = await Promise.all([
+          tx.holderAccount.findUnique({
+            where: { id: costTransaction.debitAccountId },
+            include: {
+              secondaryAccount: {
+                include: {
+                  primaryAccount: true
+                }
+              }
+            }
+          }),
+          tx.holderAccount.findUnique({
+            where: { id: costTransaction.creditAccountId },
+            include: {
+              secondaryAccount: {
+                include: {
+                  primaryAccount: true
+                }
+              }
+            }
+          })
+        ]);
 
-        await tx.holderAccount.update({
-          where: { id: costTransaction.creditAccountId },
-          data: { balance: { increment: costTransaction.amount } }
-        });
+        if (costDebitAccount && costCreditAccount) {
+          const debitAccountType = costDebitAccount.secondaryAccount?.primaryAccount?.type || 'ASSETS';
+          const creditAccountType = costCreditAccount.secondaryAccount?.primaryAccount?.type || 'ASSETS';
+
+          // Cost of Sales (Debit) - EXPENSES account increases
+          const debitChange = calculateBalanceChange(debitAccountType, costTransaction.amount, 'debit');
+          await tx.holderAccount.update({
+            where: { id: costTransaction.debitAccountId },
+            data: { balance: { increment: debitChange } }
+          });
+
+          // Inventory (Credit) - ASSETS account decreases
+          const creditChange = calculateBalanceChange(creditAccountType, costTransaction.amount, 'credit');
+          await tx.holderAccount.update({
+            where: { id: costTransaction.creditAccountId },
+            data: { balance: { increment: creditChange } }
+          });
+
+          console.log('Cost transaction balances updated:', {
+            debit: { type: debitAccountType, change: debitChange },
+            credit: { type: creditAccountType, change: creditChange }
+          });
+        }
       }
 
+      // Update sales transaction balances
       if (salesTransaction) {
-        // Sales: Update both debit and credit accounts
-        await tx.holderAccount.update({
-          where: { id: salesTransaction.debitAccountId },
-          data: { balance: { increment: salesTransaction.amount } }
-        });
+        // Fetch account types to determine proper balance changes
+        const [salesDebitAccount, salesCreditAccount] = await Promise.all([
+          tx.holderAccount.findUnique({
+            where: { id: salesTransaction.debitAccountId },
+            include: {
+              secondaryAccount: {
+                include: {
+                  primaryAccount: true
+                }
+              }
+            }
+          }),
+          tx.holderAccount.findUnique({
+            where: { id: salesTransaction.creditAccountId },
+            include: {
+              secondaryAccount: {
+                include: {
+                  primaryAccount: true
+                }
+              }
+            }
+          })
+        ]);
 
-        await tx.holderAccount.update({
-          where: { id: salesTransaction.creditAccountId },
-          data: { balance: { increment: salesTransaction.amount } }
-        });
+        if (salesDebitAccount && salesCreditAccount) {
+          const debitAccountType = salesDebitAccount.secondaryAccount?.primaryAccount?.type || 'ASSETS';
+          const creditAccountType = salesCreditAccount.secondaryAccount?.primaryAccount?.type || 'REVENUE';
+
+          // Customer Account (Debit) - ASSETS account increases
+          const debitChange = calculateBalanceChange(debitAccountType, salesTransaction.amount, 'debit');
+          await tx.holderAccount.update({
+            where: { id: salesTransaction.debitAccountId },
+            data: { balance: { increment: debitChange } }
+          });
+
+          // Revenue Account (Credit) - REVENUE account increases
+          const creditChange = calculateBalanceChange(creditAccountType, salesTransaction.amount, 'credit');
+          await tx.holderAccount.update({
+            where: { id: salesTransaction.creditAccountId },
+            data: { balance: { increment: creditChange } }
+          });
+
+          console.log('Sales transaction balances updated:', {
+            debit: { type: debitAccountType, change: debitChange },
+            credit: { type: creditAccountType, change: creditChange }
+          });
+        }
       }
 
-      console.log('Account balances updated successfully');
+      console.log('Account balances updated successfully using double-entry accounting rules');
 
       return {
         salesEntry,

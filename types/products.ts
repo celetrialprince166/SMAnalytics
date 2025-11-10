@@ -30,7 +30,8 @@ export interface SalesEntry {
   id: string;
   date: Date;
   salesCode: string;
-  productId: string;
+  productId?: string;
+  serviceId?: string;
   description: string;
   salesValue: number;
   costValue: number;
@@ -56,6 +57,15 @@ export interface SalesEntry {
     salesAccountId: string;
     costOfSalesAccountId: string;
     inventoryAccountId: string;
+  };
+  service?: {
+    id: string;
+    name: string;
+    code: string;
+    serviceLine?: {
+      id: string;
+      name: string;
+    };
   };
   customerAccount?: {
     secondaryAccount?: {
@@ -130,7 +140,9 @@ export interface SalesSummary {
   id: string;
   date: Date;
   salesCode: string;
-  productName: string;
+  productName?: string;
+  serviceName?: string;
+  serviceLineName?: string;
   description: string;
   salesValue: number;
   costValue: number;
