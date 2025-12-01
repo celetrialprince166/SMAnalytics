@@ -3,16 +3,26 @@ import { prisma } from '@/lib/prisma';
 
 /**
  * GET /api/accounts/secondary
- * Get all secondary accounts
+ * Get all secondary accounts, optionally filtered by primaryAccountId
  */
 export async function GET(request: NextRequest) {
   try {
-    // For now, get all secondary accounts (TODO: Add auth middleware)
-    // Get all secondary accounts
+    const { searchParams } = new URL(request.url);
+    const primaryAccountId = searchParams.get('primaryAccountId');
+    
+    // Build where clause
+    const where: any = {
+      isActive: true,
+    };
+    
+    // Filter by primaryAccountId if provided
+    if (primaryAccountId) {
+      where.primaryAccountId = primaryAccountId;
+    }
+    
+    // Get secondary accounts with optional filter
     const secondaryAccounts = await prisma.secondaryAccount.findMany({
-      where: {
-        isActive: true,
-      },
+      where,
       include: {
         primaryAccount: {
           select: {

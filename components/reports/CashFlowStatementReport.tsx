@@ -7,7 +7,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { reportService } from '@/lib/services/ReportService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { ReportHeader } from './ReportHeader';
 import type { CashFlowStatement } from '@/types/reports';
 
 export function CashFlowStatementReport() {
@@ -24,7 +25,7 @@ export function CashFlowStatementReport() {
     try {
       setLoading(true);
       setError(null);
-      const report = await reportService.generateCashFlowStatement(startDate, endDate);
+      const report = await apiReportService.generateCashFlowStatement(startDate, endDate);
       setCashFlow(report);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cash flow statement');
@@ -50,20 +51,26 @@ export function CashFlowStatementReport() {
     return amount < 0 ? `(${formatted})` : formatted;
   };
 
+  const handleExport = (format: 'PDF' | 'EXCEL') => {
+    console.log(`Exporting as ${format}`);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Statement of Cash Flows</h2>
-          <p className="text-sm text-muted-foreground">
-            For the period {format(startDate, 'MMM dd, yyyy')} to {format(endDate, 'MMM dd, yyyy')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <Card className="mt-6 print:shadow-none">
+      <CardHeader>
+        <ReportHeader
+          title="Statement of Cash Flows"
+          subtitle={`For the period ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`}
+          onExport={handleExport}
+          onPrint={handlePrint}
+        >
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 Start: {format(startDate, 'MMM dd')}
               </Button>
@@ -79,7 +86,7 @@ export function CashFlowStatementReport() {
           </Popover>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 End: {format(endDate, 'MMM dd')}
               </Button>
@@ -93,39 +100,30 @@ export function CashFlowStatementReport() {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        </ReportHeader>
+      </CardHeader>
 
-      {/* Error */}
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
+      <CardContent>
+        {/* Error */}
+        {error && (
+          <div className="border border-destructive rounded-md p-4 mb-4">
             <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Loading */}
-      {loading && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Cash Flow Statement */}
-      {!loading && cashFlow && (
-        <div className="space-y-6">
-          {/* Operating Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.operatingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Cash Flow Statement */}
+        {!loading && cashFlow && (
+          <div className="space-y-6">
+            {/* Operating Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.operatingActivities.title}</h3>
               <div className="space-y-1">
                 {cashFlow.operatingActivities.lineItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
@@ -144,15 +142,11 @@ export function CashFlowStatementReport() {
                   </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Investing Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.investingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Investing Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.investingActivities.title}</h3>
               <div className="space-y-1">
                 {cashFlow.investingActivities.lineItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
@@ -169,15 +163,11 @@ export function CashFlowStatementReport() {
                   </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Financing Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.financingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Financing Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.financingActivities.title}</h3>
               <div className="space-y-1">
                 {cashFlow.financingActivities.lineItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
@@ -194,15 +184,11 @@ export function CashFlowStatementReport() {
                   </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Cash Flow Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Summary */}
+            <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold border-b pb-2">Cash Flow Summary</h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Net Cash Flows</span>
@@ -226,10 +212,14 @@ export function CashFlowStatementReport() {
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 text-xs text-gray-500 italic">
+          Generated on {format(new Date(), 'MMMM dd, yyyy')}
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

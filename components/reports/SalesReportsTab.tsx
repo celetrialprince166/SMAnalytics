@@ -16,8 +16,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { SalesLevelsReportComponent } from './SalesLevelsReportComponent';
 import { SalesMovementReportComponent } from './SalesMovementReportComponent';
-import { reportService } from '@/lib/services/ReportService';
-import { productService } from '@/lib/services/ProductService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { apiProductService } from '@/lib/services/ApiProductService';
 import { toast } from 'sonner';
 
 export function SalesReportsTab() {
@@ -46,7 +46,7 @@ export function SalesReportsTab() {
 
   const loadProducts = async () => {
     try {
-      const allProducts = await productService.getProducts();
+      const allProducts = await apiProductService.getProducts();
       setProducts(allProducts);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -60,7 +60,7 @@ export function SalesReportsTab() {
       const startDate = new Date(levelsFromDate);
       const periods = parseInt(numberOfPeriods);
 
-      const data = await reportService.generateSalesLevelsReport(
+      const data = await apiReportService.generateSalesLevelsReport(
         reportType,
         mode,
         startDate,
@@ -93,7 +93,7 @@ export function SalesReportsTab() {
         'as-at': 'AS_AT' as const,
       };
 
-      const data = await reportService.generateSalesMovementReport(
+      const data = await apiReportService.generateSalesMovementReport(
         startDate,
         endDate,
         dateModeMap[dateMode],

@@ -7,7 +7,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { reportService } from '@/lib/services/ReportService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { ReportHeader, ReportLogo } from './ReportHeader';
 import type { BalanceSheet } from '@/types/reports';
 
 export function BalanceSheetReport() {
@@ -20,7 +21,7 @@ export function BalanceSheetReport() {
     try {
       setLoading(true);
       setError(null);
-      const report = await reportService.generateBalanceSheet(asOfDate);
+      const report = await apiReportService.generateBalanceSheet(asOfDate);
       setBalanceSheet(report);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load balance sheet');
@@ -41,20 +42,27 @@ export function BalanceSheetReport() {
     }).format(amount);
   };
 
+  const handleExport = (format: 'PDF' | 'EXCEL') => {
+    // Export functionality
+    console.log(`Exporting as ${format}`);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Statement of Financial Position</h2>
-          <p className="text-sm text-muted-foreground">
-            As at {format(asOfDate, 'MMMM dd, yyyy')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <Card className="mt-6 print:shadow-none">
+      <CardHeader>
+        <ReportHeader
+          title="Statement of Financial Position"
+          subtitle={`As at ${format(asOfDate, 'MMMM dd, yyyy')}`}
+          onExport={handleExport}
+          onPrint={handlePrint}
+        >
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {format(asOfDate, 'MMM dd, yyyy')}
               </Button>
@@ -68,39 +76,30 @@ export function BalanceSheetReport() {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        </ReportHeader>
+      </CardHeader>
 
-      {/* Error */}
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
+      <CardContent>
+        {/* Error */}
+        {error && (
+          <div className="border border-destructive rounded-md p-4 mb-4">
             <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Loading */}
-      {loading && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Balance Sheet */}
-      {!loading && balanceSheet && (
-        <div className="space-y-6">
-          {/* Assets */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Assets</CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Balance Sheet */}
+        {!loading && balanceSheet && (
+          <div className="space-y-6">
+            {/* Assets */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Assets</h3>
               <div className="space-y-6">
                 {balanceSheet.assets.subsections.map((subsection, idx) => (
                   <div key={idx} className="space-y-3">
@@ -135,15 +134,11 @@ export function BalanceSheetReport() {
                   <span>{formatCurrency(balanceSheet.totalAssets)}</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Liabilities & Equity */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Liabilities & Shareholders Equity</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Liabilities & Equity */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Liabilities & Shareholders Equity</h3>
               <div className="space-y-6">
                 {/* Liabilities */}
                 <div className="space-y-4">
@@ -227,10 +222,14 @@ export function BalanceSheetReport() {
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 text-xs text-gray-500 italic">
+          Generated on {format(new Date(), 'MMMM dd, yyyy')}
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

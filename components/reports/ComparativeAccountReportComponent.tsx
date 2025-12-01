@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ReportHeader } from './ReportHeader';
 import type { ComparativeAccountReport } from '@/types/reports';
 
 interface ComparativeAccountReportComponentProps {
@@ -28,45 +29,32 @@ export function ComparativeAccountReportComponent({
     return end.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
+  const handlePrint = () => {
+    if (onPrint) {
+      onPrint();
+    } else {
+      window.print();
+    }
+  };
+
   return (
-    <Card className="mt-6">
+    <Card className="mt-6 print:shadow-none">
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle>
-              {data.periodType.charAt(0) + data.periodType.slice(1).toLowerCase().replace('_', ' ')} Account Report: {data.accountName}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Account Code: {data.accountCode}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {onPrint && (
-              <Button variant="outline" size="sm" onClick={onPrint}>
-                Print
-              </Button>
-            )}
-            {onExport && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => onExport('PDF')}>
-                  Export PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => onExport('EXCEL')}>
-                  Export Excel
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        <ReportHeader
+          title={`${data.periodType.charAt(0) + data.periodType.slice(1).toLowerCase().replace('_', ' ')} Account Report`}
+          subtitle={`Account: ${data.accountName} (${data.accountCode})`}
+          onExport={onExport}
+          onPrint={handlePrint}
+        />
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-3 px-4 font-semibold">Account</th>
+              <tr className="border-b-2 border-gray-300 bg-gray-800">
+                <th className="text-left py-3 px-4 font-semibold text-white">Account</th>
                 {data.periods.map((period, index) => (
-                  <th key={index} className="text-right py-3 px-4 font-semibold">
+                  <th key={index} className="text-right py-3 px-4 font-semibold text-white">
                     {formatPeriodHeader(period.startDate, period.endDate)}
                   </th>
                 ))}
@@ -77,7 +65,7 @@ export function ComparativeAccountReportComponent({
                 <tr key={subAccount.accountId} className="border-b border-gray-200 hover:bg-gray-50">
                   <td className="py-2 px-4">{subAccount.accountName}</td>
                   {subAccount.amounts.map((amount, index) => (
-                    <td key={index} className="text-right py-2 px-4">
+                    <td key={index} className="text-right py-2 px-4 font-mono">
                       {amount === 0 ? '-' : formatCurrency(amount)}
                     </td>
                   ))}
@@ -86,7 +74,7 @@ export function ComparativeAccountReportComponent({
               <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
                 <td className="py-3 px-4">Total</td>
                 {data.totals.map((total, index) => (
-                  <td key={index} className="text-right py-3 px-4">
+                  <td key={index} className="text-right py-3 px-4 font-mono">
                     {formatCurrency(total)}
                   </td>
                 ))}
@@ -94,7 +82,7 @@ export function ComparativeAccountReportComponent({
             </tbody>
           </table>
         </div>
-        <div className="mt-4 text-sm text-muted-foreground">
+        <div className="mt-4 text-xs text-gray-500 italic">
           Generated on: {new Date(data.generatedAt).toLocaleString()}
         </div>
       </CardContent>

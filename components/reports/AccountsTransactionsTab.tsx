@@ -14,8 +14,8 @@ import {
 } from '@/components/ui/select';
 import { PettyCashAnalysisComponent } from './PettyCashAnalysisComponent';
 import { AccountTransactionsReportComponent } from './AccountTransactionsReportComponent';
-import { reportService } from '@/lib/services/ReportService';
-import { accountService } from '@/lib/services/AccountService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { apiAccountService } from '@/lib/services/ApiAccountService';
 import { toast } from 'sonner';
 import type { PettyCashAnalysis, AccountReport } from '@/types/reports';
 import type { PrimaryAccount, SecondaryAccount, HolderAccount } from '@/types/accounts';
@@ -74,7 +74,7 @@ export function AccountsTransactionsTab() {
 
   const loadAccounts = async () => {
     try {
-      const hierarchy = await accountService.getAccountHierarchy();
+      const hierarchy = await apiAccountService.getAccountHierarchy();
       setPrimaryAccounts(hierarchy.primary);
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -84,7 +84,7 @@ export function AccountsTransactionsTab() {
 
   const loadSecondaryAccounts = async (primaryId: string) => {
     try {
-      const secondaries = await accountService.getSecondaryAccounts(primaryId);
+      const secondaries = await apiAccountService.getSecondaryAccounts(primaryId);
       setSecondaryAccounts(secondaries);
     } catch (error) {
       console.error('Error loading secondary accounts:', error);
@@ -94,7 +94,7 @@ export function AccountsTransactionsTab() {
 
   const loadHolderAccounts = async (secondaryId: string) => {
     try {
-      const holders = await accountService.getHolderAccounts(secondaryId);
+      const holders = await apiAccountService.getHolderAccounts(secondaryId);
       setHolderAccounts(holders);
     } catch (error) {
       console.error('Error loading holder accounts:', error);
@@ -109,7 +109,7 @@ export function AccountsTransactionsTab() {
       const monthNum = date.getMonth() + 1;
       const yearNum = date.getFullYear();
       
-      const data = await reportService.generatePettyCashAnalysis(monthNum, yearNum);
+      const data = await apiReportService.generatePettyCashAnalysis(monthNum, yearNum);
       setPettyCashData(data);
       setAccountReportData(null);
       toast.success('Petty Cash Analysis generated successfully');
@@ -140,7 +140,7 @@ export function AccountsTransactionsTab() {
       const start = new Date(fromDate);
       const end = new Date(toDate);
       
-      const data = await reportService.generateAccountReport(selectedHolderId, start, end);
+      const data = await apiReportService.generateAccountReport(selectedHolderId, start, end);
       setAccountReportData(data);
       setPettyCashData(null);
       toast.success('Account Transactions Report generated successfully');

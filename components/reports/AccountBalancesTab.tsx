@@ -16,8 +16,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { TrialBalanceReport } from './TrialBalanceReport';
 import { StatementOfAccountsComponent } from './StatementOfAccountsComponent';
 import { AgeingAnalysisComponent } from './AgeingAnalysisComponent';
-import { reportService } from '@/lib/services/ReportService';
-import { accountService } from '@/lib/services/AccountService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { apiAccountService } from '@/lib/services/ApiAccountService';
 import { toast } from 'sonner';
 import type { TrialBalance, StatementOfAccounts, AgeingAnalysis } from '@/types/reports';
 import type { PrimaryAccount, SecondaryAccount, HolderAccount } from '@/types/accounts';
@@ -74,7 +74,7 @@ export function AccountBalancesTab() {
 
   const loadAccounts = async () => {
     try {
-      const hierarchy = await accountService.getAccountHierarchy();
+      const hierarchy = await apiAccountService.getAccountHierarchy();
       setPrimaryAccounts(hierarchy.primary);
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -84,7 +84,7 @@ export function AccountBalancesTab() {
 
   const loadSecondaryAccounts = async (primaryId: string) => {
     try {
-      const secondaries = await accountService.getSecondaryAccounts(primaryId);
+      const secondaries = await apiAccountService.getSecondaryAccounts(primaryId);
       setSecondaryAccounts(secondaries);
     } catch (error) {
       console.error('Error loading secondary accounts:', error);
@@ -94,7 +94,7 @@ export function AccountBalancesTab() {
 
   const loadHolderAccounts = async (secondaryId: string) => {
     try {
-      const holders = await accountService.getHolderAccounts(secondaryId);
+      const holders = await apiAccountService.getHolderAccounts(secondaryId);
       setHolderAccounts(holders);
     } catch (error) {
       console.error('Error loading holder accounts:', error);
@@ -108,7 +108,7 @@ export function AccountBalancesTab() {
       const asOfDate = new Date(trialBalanceFilters.asAtDate);
       const accountType = trialBalanceFilters.accountType === 'secondary' ? 'SECONDARY' : 'HOLDER';
       
-      const data = await reportService.generateTrialBalance(asOfDate, accountType);
+      const data = await apiReportService.generateTrialBalance(asOfDate, accountType);
       setTrialBalanceData(data);
       setStatementData(null);
       setAgeingData(null);
@@ -132,7 +132,7 @@ export function AccountBalancesTab() {
       const start = new Date(statementFromDate);
       const end = new Date(statementToDate);
       
-      const data = await reportService.generateStatementOfAccounts(selectedHolderId, start, end);
+      const data = await apiReportService.generateStatementOfAccounts(selectedHolderId, start, end);
       setStatementData(data);
       setTrialBalanceData(null);
       setAgeingData(null);
@@ -151,7 +151,7 @@ export function AccountBalancesTab() {
     try {
       const asOf = new Date(ageingDate);
       
-      const data = await reportService.generateAgeingAnalysis(asOf, 'RECEIVABLES');
+      const data = await apiReportService.generateAgeingAnalysis(asOf, 'RECEIVABLES');
       setAgeingData(data);
       setTrialBalanceData(null);
       setStatementData(null);

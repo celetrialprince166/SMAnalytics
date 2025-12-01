@@ -18,8 +18,8 @@ import { BalanceSheetReport } from './BalanceSheetReport';
 import { CashFlowStatementReport } from './CashFlowStatementReport';
 import { ComparativeCashFlowReport } from './ComparativeCashFlowReport';
 import { ComparativeAccountReportComponent } from './ComparativeAccountReportComponent';
-import { reportService } from '@/lib/services/ReportService';
-import { accountService } from '@/lib/services/AccountService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { apiAccountService } from '@/lib/services/ApiAccountService';
 import { toast } from 'sonner';
 import type { IncomeStatement, ComparativeAccountReport } from '@/types/reports';
 import type { PrimaryAccount, SecondaryAccount } from '@/types/accounts';
@@ -61,7 +61,7 @@ export function FinancialAccountsTab() {
 
   const loadAccounts = async () => {
     try {
-      const hierarchy = await accountService.getAccountHierarchy();
+      const hierarchy = await apiAccountService.getAccountHierarchy();
       setPrimaryAccounts(hierarchy.primary);
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -71,7 +71,7 @@ export function FinancialAccountsTab() {
 
   const loadSecondaryAccounts = async (primaryId: string) => {
     try {
-      const secondaries = await accountService.getSecondaryAccounts(primaryId);
+      const secondaries = await apiAccountService.getSecondaryAccounts(primaryId);
       setSecondaryAccounts(secondaries);
     } catch (error) {
       console.error('Error loading secondary accounts:', error);
@@ -81,7 +81,7 @@ export function FinancialAccountsTab() {
 
   const checkHolderAccounts = async (secondaryId: string) => {
     try {
-      const holders = await accountService.getHolderAccounts(secondaryId);
+      const holders = await apiAccountService.getHolderAccounts(secondaryId);
       setHolderAccountCount(holders.length);
     } catch (error) {
       console.error('Error checking holder accounts:', error);
@@ -96,7 +96,7 @@ export function FinancialAccountsTab() {
       const endDate = new Date(startDate);
       endDate.setMonth(endDate.getMonth() + parseInt(filters.periods));
       
-      const data = await reportService.generateIncomeStatement(startDate, endDate);
+      const data = await apiReportService.generateIncomeStatement(startDate, endDate);
       setIncomeStatementData(data);
       toast.success('Income Statement generated successfully');
     } catch (error) {
@@ -118,7 +118,7 @@ export function FinancialAccountsTab() {
       const startDate = new Date(filters.fromDate);
       const numberOfPeriods = parseInt(filters.periods);
       
-      const data = await reportService.generateComparativeAccountReport(
+      const data = await apiReportService.generateComparativeAccountReport(
         selectedSecondaryId,
         startDate,
         numberOfPeriods,

@@ -8,7 +8,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { reportService } from '@/lib/services/ReportService';
+import { apiReportService } from '@/lib/services/ApiReportService';
+import { ReportHeader } from './ReportHeader';
 import type { ComparativeCashFlowStatement } from '@/types/reports';
 
 export function ComparativeCashFlowReport() {
@@ -26,7 +27,7 @@ export function ComparativeCashFlowReport() {
     try {
       setLoading(true);
       setError(null);
-      const report = await reportService.generateComparativeCashFlowStatement(
+      const report = await apiReportService.generateComparativeCashFlowStatement(
         startDate,
         numberOfPeriods,
         periodType
@@ -64,20 +65,26 @@ export function ComparativeCashFlowReport() {
     }
   };
 
+  const handleExport = (format: 'PDF' | 'EXCEL') => {
+    console.log(`Exporting as ${format}`);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Comparative Cash Flow Statement</h2>
-          <p className="text-sm text-muted-foreground">
-            {periodType === 'MONTHLY' ? 'Month-by-Month' : 'Year-by-Year'} Comparison
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <Card className="mt-6 print:shadow-none">
+      <CardHeader>
+        <ReportHeader
+          title="Comparative Cash Flow Statement"
+          subtitle={`${periodType === 'MONTHLY' ? 'Month-by-Month' : 'Year-by-Year'} Comparison`}
+          onExport={handleExport}
+          onPrint={handlePrint}
+        >
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 Start: {format(startDate, 'MMM yyyy')}
               </Button>
@@ -92,7 +99,7 @@ export function ComparativeCashFlowReport() {
             </PopoverContent>
           </Popover>
           <Select value={periodType} onValueChange={(value: 'MONTHLY' | 'YEARLY') => setPeriodType(value)}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -101,7 +108,7 @@ export function ComparativeCashFlowReport() {
             </SelectContent>
           </Select>
           <Select value={numberOfPeriods.toString()} onValueChange={(value) => setNumberOfPeriods(parseInt(value))}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -111,39 +118,30 @@ export function ComparativeCashFlowReport() {
               <SelectItem value="12">12 Periods</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        </ReportHeader>
+      </CardHeader>
 
-      {/* Error */}
-      {error && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
+      <CardContent>
+        {/* Error */}
+        {error && (
+          <div className="border border-destructive rounded-md p-4 mb-4">
             <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Loading */}
-      {loading && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {/* Comparative Cash Flow */}
-      {!loading && cashFlow && (
-        <div className="space-y-6">
-          {/* Operating Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.operatingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Comparative Cash Flow */}
+        {!loading && cashFlow && (
+          <div className="space-y-6">
+            {/* Operating Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.operatingActivities.title}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -178,15 +176,11 @@ export function ComparativeCashFlowReport() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Investing Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.investingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Investing Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.investingActivities.title}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -221,15 +215,11 @@ export function ComparativeCashFlowReport() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Financing Activities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{cashFlow.financingActivities.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Financing Activities */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold border-b pb-2">{cashFlow.financingActivities.title}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -264,15 +254,11 @@ export function ComparativeCashFlowReport() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Cash Flow Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
+            {/* Summary */}
+            <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold border-b pb-2">Cash Flow Summary</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -313,10 +299,14 @@ export function ComparativeCashFlowReport() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 text-xs text-gray-500 italic">
+          Generated on {format(new Date(), 'MMMM dd, yyyy')}
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

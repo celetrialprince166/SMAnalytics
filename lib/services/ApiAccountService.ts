@@ -281,10 +281,15 @@ export class ApiAccountService {
 
   /**
    * Get account balance
+   * Note: Balance from DB may be a string (Prisma Decimal), so we parse it
    */
   async getAccountBalance(accountId: string, asOfDate?: Date): Promise<number> {
     const account = await this.getHolderAccountById(accountId);
-    return account?.balance || 0;
+    if (!account) return 0;
+    // Parse balance as number - Prisma Decimal returns strings
+    return typeof account.balance === 'string' 
+      ? parseFloat(account.balance) || 0 
+      : account.balance || 0;
   }
 
   /**

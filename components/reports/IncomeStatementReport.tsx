@@ -9,8 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { FileDown, Printer } from 'lucide-react';
+import { ReportHeader } from './ReportHeader';
 import type { IncomeStatement } from '@/types/reports';
 
 interface IncomeStatementReportProps {
@@ -39,46 +38,23 @@ export function IncomeStatementReport({
     }).format(new Date(date));
   };
 
+  const handlePrint = () => {
+    if (onPrint) {
+      onPrint();
+    } else {
+      window.print();
+    }
+  };
+
   return (
     <Card className="mt-6 print:shadow-none">
-      <CardHeader className="space-y-4 pb-4">
-        {/* Company Logo/Name */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <div className="bg-gray-600 text-white px-2 py-1 text-sm font-bold">s</div>
-              <div className="bg-yellow-600 text-white px-2 py-1 text-sm font-bold">&</div>
-              <div className="bg-gray-600 text-white px-2 py-1 text-sm font-bold">m</div>
-            </div>
-            <span className="text-yellow-600 font-semibold italic">analytics</span>
-          </div>
-
-          {/* Export Buttons */}
-          <div className="flex gap-2 print:hidden">
-            <Button variant="outline" size="sm" onClick={() => onExport?.('PDF')}>
-              <FileDown className="h-4 w-4 mr-2" />
-              PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onExport?.('EXCEL')}>
-              <FileDown className="h-4 w-4 mr-2" />
-              Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={onPrint}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
-          </div>
-        </div>
-
-        {/* Report Title */}
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-gray-700">
-            Income Statement
-          </h2>
-          <p className="text-sm text-gray-600">
-            For the period from {formatDate(data.period.startDate)} to {formatDate(data.period.endDate)}
-          </p>
-        </div>
+      <CardHeader>
+        <ReportHeader
+          title="Income Statement"
+          subtitle={`For the period from ${formatDate(data.period.startDate)} to ${formatDate(data.period.endDate)}`}
+          onExport={onExport}
+          onPrint={handlePrint}
+        />
       </CardHeader>
 
       <CardContent>

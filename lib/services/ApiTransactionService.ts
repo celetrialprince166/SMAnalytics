@@ -55,7 +55,13 @@ export class ApiTransactionService {
       }
 
       const data = await response.json();
-      return data.data || [];
+      const transactions = data.data || [];
+      
+      // Parse amounts as numbers - Prisma Decimal returns strings
+      return transactions.map((t: any) => ({
+        ...t,
+        amount: typeof t.amount === 'string' ? parseFloat(t.amount) || 0 : t.amount || 0,
+      }));
     } catch (error) {
       console.error('Error fetching transactions:', error);
       throw error;
@@ -77,7 +83,14 @@ export class ApiTransactionService {
       }
 
       const data = await response.json();
-      return data.data;
+      const t = data.data;
+      if (!t) return null;
+      
+      // Parse amount as number - Prisma Decimal returns strings
+      return {
+        ...t,
+        amount: typeof t.amount === 'string' ? parseFloat(t.amount) || 0 : t.amount || 0,
+      };
     } catch (error) {
       console.error('Error fetching transaction:', error);
       throw error;
